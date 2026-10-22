@@ -114,6 +114,7 @@ func (s *URLTest) Start() error {
 		s.balancer.onChange = func() {
 			invalidateReachability(ctx)
 		}
+		s.balancer.alive = s.slotAlive // lx: SPEC 138 — pick skips slots that failed their last probe
 	}
 	s.group = group
 	return nil
