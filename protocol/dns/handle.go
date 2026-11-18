@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"net"
+	"sync"
 
 	"github.com/sagernet/sing-box/adapter"
 	C "github.com/sagernet/sing-box/constant"
@@ -47,6 +48,28 @@ func HandleStreamDNSRequest(ctx context.Context, router adapter.DNSRouter, conn 
 		go writeStreamResponse(conn, response)
 	})
 	return nil
+}
+
+// Responses are written from per-query goroutines. Proxy server conns such as
+// VLESS and sing-mux write their response header with the first payload and are
+// not safe for concurrent writes, so callers wrap the conn once per stream.
+type serialWriteConn struct {
+	net.Conn
+	writeAccess sync.Mutex
+}
+
+func NewSerialWriteConn(conn net.Conn) net.Conn {
+	return &serialWriteConn{Conn: conn}
+}
+
+func (c *serialWriteConn) Write(b []byte) (int, error) {
+	c.writeAccess.Lock()
+	defer c.writeAccess.Unlock()
+	return c.Conn.Write(b)
+}
+
+func (c *serialWriteConn) Upstream() any {
+	return c.Conn
 }
 
 func writeStreamResponse(conn net.Conn, response *mDNS.Msg) {
